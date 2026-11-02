@@ -9,7 +9,7 @@ import {
   XCircle,
   Edit3,
   Trash2,
-  DollarSign,
+  IndianRupee,
   Users,
   Radio,
   Sparkles,
@@ -56,7 +56,7 @@ export const PlansManagementPage: React.FC = () => {
     description: "",
     priceMonthly: 29,
     priceYearly: 290,
-    currency: "USD",
+    currency: "INR",
     maxChannels: 5,
     maxContacts: 5000,
     maxMonthlyMessages: 25000,
@@ -96,7 +96,7 @@ export const PlansManagementPage: React.FC = () => {
       description: "",
       priceMonthly: 29,
       priceYearly: 290,
-      currency: "USD",
+      currency: "INR",
       maxChannels: 5,
       maxContacts: 5000,
       maxMonthlyMessages: 25000,
@@ -120,7 +120,7 @@ export const PlansManagementPage: React.FC = () => {
       description: plan.description || "",
       priceMonthly: plan.priceMonthly,
       priceYearly: plan.priceYearly,
-      currency: plan.currency || "USD",
+      currency: plan.currency || "INR",
       maxChannels: plan.maxChannels,
       maxContacts: plan.maxContacts,
       maxMonthlyMessages: plan.maxMonthlyMessages,
@@ -556,7 +556,7 @@ export const PlansManagementPage: React.FC = () => {
                     type="text"
                     value={formData.currency}
                     onChange={(e) => setFormData({ ...formData, currency: e.target.value.toUpperCase() })}
-                    placeholder="USD"
+                    placeholder="INR"
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 uppercase font-mono"
                   />
                 </div>

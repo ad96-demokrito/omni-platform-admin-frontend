@@ -7,7 +7,7 @@ import {
 } from "../types/platform";
 import { usePlatformAuth } from "../context/PlatformAuthContext";
 import {
-  DollarSign,
+  IndianRupee,
   Search,
   Filter,
   RefreshCw,
@@ -46,7 +46,7 @@ export const SubscriptionPaymentsPage: React.FC = () => {
   const [selectedTenantId, setSelectedTenantId] = useState("");
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [amount, setAmount] = useState(49);
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState("INR");
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [paymentMethod, setPaymentMethod] = useState("stripe");
   const [transactionRef, setTransactionRef] = useState("");
@@ -196,7 +196,7 @@ export const SubscriptionPaymentsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
           <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-            <DollarSign className="w-5 h-5" />
+            <IndianRupee className="w-5 h-5" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">
@@ -234,14 +234,14 @@ export const SubscriptionPaymentsPage: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex items-center space-x-4">
           <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-            <DollarSign className="w-5 h-5" />
+            <IndianRupee className="w-5 h-5" />
           </div>
           <div>
             <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400 block">
               Total SaaS Revenue
             </span>
             <span className="text-2xl font-bold text-white font-mono">
-              ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ₹{totalRevenue.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
         </div>
