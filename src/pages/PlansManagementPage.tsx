@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { platformApi } from "../api/platform-api";
-import { PlatformPlanItem, CreatePlatformPlanDto, UpdatePlatformPlanDto } from "../types/platform";
+import {
+  PlatformPlanItem,
+  CreatePlatformPlanDto,
+  PLAN_FEATURE_DEFS,
+  PlanFeatureFlags,
+  UpdatePlatformPlanDto,
+  PlanPriceInput,
+} from "../types/platform";
+import { BILLING_CURRENCIES, BillingCurrency, formatMoney } from "../utils/money";
 import { usePlatformAuth } from "../context/PlatformAuthContext";
 import {
   Layers,
@@ -9,7 +17,6 @@ import {
   XCircle,
   Edit3,
   Trash2,
-  DollarSign,
   Users,
   Radio,
   Sparkles,
@@ -20,6 +27,45 @@ import {
   RefreshCw,
   ShieldAlert,
 } from "lucide-react";
+
+interface PriceFormRow {
+  enabled: boolean;
+  monthly: number;
+  yearly: number;
+}
+type PriceForm = Record<BillingCurrency, PriceFormRow>;
+
+/** Starting prices for a new plan (the draft rate card's Starter tier); the admin edits them. */
+const NO_FEATURE_FLAGS: PlanFeatureFlags = {
+  ai_copilot: false,
+  api_keys: false,
+  audit_compliance: false,
+  teams_roles: false,
+};
+
+const defaultPriceForm = (): PriceForm => ({
+  INR: { enabled: true, monthly: 1499, yearly: 14990 },
+  USD: { enabled: true, monthly: 29, yearly: 290 },
+});
+
+const priceFormFromPlan = (plan: PlatformPlanItem): PriceForm => {
+  const form: PriceForm = {
+    INR: { enabled: false, monthly: 0, yearly: 0 },
+    USD: { enabled: false, monthly: 0, yearly: 0 },
+  };
+  for (const price of plan.prices ?? []) {
+    const code = price.currency.toUpperCase() as BillingCurrency;
+    if (code in form) form[code] = { enabled: price.isActive, monthly: price.priceMonthly, yearly: price.priceYearly };
+  }
+  return form;
+};
+
+const priceFormToPayload = (form: PriceForm): PlanPriceInput[] =>
+  BILLING_CURRENCIES.filter((cur) => form[cur].enabled).map((cur) => ({
+    currency: cur,
+    priceMonthly: Number(form[cur].monthly),
+    priceYearly: Number(form[cur].yearly),
+  }));
 
 export const PlansManagementPage: React.FC = () => {
   const { isSuperAdmin } = usePlatformAuth();
@@ -38,15 +84,14 @@ export const PlansManagementPage: React.FC = () => {
     id: string;
     name: string;
     description: string;
-    priceMonthly: number;
-    priceYearly: number;
-    currency: string;
+    prices: PriceForm;
     maxChannels: number;
     maxContacts: number;
     maxMonthlyMessages: number;
     maxMonthlyAiQueries: number;
     badgeText: string;
     featuresStr: string;
+    featureFlags: PlanFeatureFlags;
     isActive: boolean;
     isPublic: boolean;
     isCustom: boolean;
@@ -54,15 +99,14 @@ export const PlansManagementPage: React.FC = () => {
     id: "",
     name: "",
     description: "",
-    priceMonthly: 29,
-    priceYearly: 290,
-    currency: "USD",
+    prices: defaultPriceForm(),
     maxChannels: 5,
     maxContacts: 5000,
     maxMonthlyMessages: 25000,
     maxMonthlyAiQueries: 1000,
     badgeText: "",
     featuresStr: "WhatsApp & Telegram integrations\nAI Automated Flows\nMulti-agent Inbox\nAnalytics Dashboard",
+    featureFlags: { ...NO_FEATURE_FLAGS },
     isActive: true,
     isPublic: true,
     isCustom: false,
@@ -94,15 +138,14 @@ export const PlansManagementPage: React.FC = () => {
       id: "",
       name: "",
       description: "",
-      priceMonthly: 29,
-      priceYearly: 290,
-      currency: "USD",
+      prices: defaultPriceForm(),
       maxChannels: 5,
       maxContacts: 5000,
       maxMonthlyMessages: 25000,
       maxMonthlyAiQueries: 1000,
       badgeText: "",
       featuresStr: "WhatsApp & Telegram integrations\nAI Automated Flows\nMulti-agent Inbox\nAnalytics Dashboard",
+      featureFlags: { ...NO_FEATURE_FLAGS },
       isActive: true,
       isPublic: true,
       isCustom: false,
@@ -118,15 +161,14 @@ export const PlansManagementPage: React.FC = () => {
       id: plan.id,
       name: plan.name,
       description: plan.description || "",
-      priceMonthly: plan.priceMonthly,
-      priceYearly: plan.priceYearly,
-      currency: plan.currency || "USD",
+      prices: priceFormFromPlan(plan),
       maxChannels: plan.maxChannels,
       maxContacts: plan.maxContacts,
       maxMonthlyMessages: plan.maxMonthlyMessages,
       maxMonthlyAiQueries: plan.maxMonthlyAiQueries,
       badgeText: plan.badgeText || "",
       featuresStr: (plan.features || []).join("\n"),
+      featureFlags: { ...NO_FEATURE_FLAGS, ...(plan.featureFlags || {}) },
       isActive: plan.isActive,
       isPublic: plan.isPublic,
       isCustom: plan.isCustom,
@@ -159,19 +201,23 @@ export const PlansManagementPage: React.FC = () => {
       .filter(Boolean);
 
     try {
+      const prices = priceFormToPayload(formData.prices);
+      if (prices.length === 0) {
+        throw new Error("Enable at least one currency price for this plan");
+      }
+
       if (isEditing) {
         const updatePayload: UpdatePlatformPlanDto = {
           name: formData.name,
           description: formData.description || undefined,
-          priceMonthly: Number(formData.priceMonthly),
-          priceYearly: Number(formData.priceYearly),
-          currency: formData.currency,
+          prices,
           maxChannels: Number(formData.maxChannels),
           maxContacts: Number(formData.maxContacts),
           maxMonthlyMessages: Number(formData.maxMonthlyMessages),
           maxMonthlyAiQueries: Number(formData.maxMonthlyAiQueries),
           badgeText: formData.badgeText || undefined,
           features: featureList,
+          featureFlags: formData.featureFlags,
           isActive: formData.isActive,
           isPublic: formData.isPublic,
           isCustom: formData.isCustom,
@@ -183,15 +229,14 @@ export const PlansManagementPage: React.FC = () => {
           id: formData.id.toLowerCase().trim().replace(/[^a-z0-9_-]/g, "_"),
           name: formData.name,
           description: formData.description || undefined,
-          priceMonthly: Number(formData.priceMonthly),
-          priceYearly: Number(formData.priceYearly),
-          currency: formData.currency,
+          prices,
           maxChannels: Number(formData.maxChannels),
           maxContacts: Number(formData.maxContacts),
           maxMonthlyMessages: Number(formData.maxMonthlyMessages),
           maxMonthlyAiQueries: Number(formData.maxMonthlyAiQueries),
           badgeText: formData.badgeText || undefined,
           features: featureList,
+          featureFlags: formData.featureFlags,
           isActive: formData.isActive,
           isPublic: formData.isPublic,
           isCustom: formData.isCustom,
@@ -321,15 +366,22 @@ export const PlansManagementPage: React.FC = () => {
                 {/* Pricing Block */}
                 <div className="bg-slate-950/70 border border-slate-800/80 rounded-lg p-3 flex items-center justify-between">
                   <div>
-                    <div className="flex items-baseline space-x-1">
-                      <span className="text-lg font-extrabold text-white">
-                        {plan.currency} {plan.priceMonthly}
-                      </span>
-                      <span className="text-[11px] text-slate-400">/mo</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400">
-                      or {plan.currency} {plan.priceYearly}/yr
-                    </span>
+                    {(plan.prices?.length ? plan.prices : []).map((price) => (
+                      <div key={price.currency} className={price.isActive ? "" : "opacity-50"}>
+                        <div className="flex items-baseline space-x-1">
+                          <span className="text-lg font-extrabold text-white">
+                            {formatMoney(price.priceMonthly, price.currency)}
+                          </span>
+                          <span className="text-[11px] text-slate-400">/mo</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400">
+                          or {formatMoney(price.priceYearly, price.currency)}/yr
+                        </span>
+                      </div>
+                    ))}
+                    {!plan.prices?.length && (
+                      <span className="text-[11px] text-amber-400">No prices set</span>
+                    )}
                   </div>
 
                   <div className="text-right space-y-0.5">
@@ -518,48 +570,64 @@ export const PlansManagementPage: React.FC = () => {
                 />
               </div>
 
-              {/* Pricing & Currency */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1">
-                    Price Monthly <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                    value={formData.priceMonthly}
-                    onChange={(e) => setFormData({ ...formData, priceMonthly: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1">
-                    Price Yearly <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                    value={formData.priceYearly}
-                    onChange={(e) => setFormData({ ...formData, priceYearly: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1">Currency</label>
-                  <input
-                    type="text"
-                    value={formData.currency}
-                    onChange={(e) => setFormData({ ...formData, currency: e.target.value.toUpperCase() })}
-                    placeholder="USD"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 uppercase font-mono"
-                  />
-                </div>
+              {/* Prices by currency (India: INR via Razorpay; international: USD via Stripe) */}
+              <div className="space-y-2">
+                <span className="text-xs font-semibold text-slate-200 block">
+                  Prices by currency <span className="text-rose-400">*</span>
+                </span>
+                {BILLING_CURRENCIES.map((cur) => {
+                  const row = formData.prices[cur];
+                  const setRow = (patch: Partial<PriceFormRow>) =>
+                    setFormData({
+                      ...formData,
+                      prices: { ...formData.prices, [cur]: { ...row, ...patch } },
+                    });
+                  return (
+                    <div
+                      key={cur}
+                      className="grid grid-cols-1 sm:grid-cols-[11rem_1fr_1fr] items-end gap-3 bg-slate-950/50 border border-slate-800/70 rounded-lg p-3"
+                    >
+                      <label className="flex items-center space-x-2 text-xs text-slate-300 pb-2">
+                        <input
+                          type="checkbox"
+                          checked={row.enabled}
+                          onChange={(e) => setRow({ enabled: e.target.checked })}
+                        />
+                        <span className="font-mono font-semibold">{cur}</span>
+                        <span className="text-[10px] text-slate-500">
+                          {cur === "INR" ? "India · Razorpay" : "International · Stripe"}
+                        </span>
+                      </label>
+                      <div>
+                        <label className="text-[11px] text-slate-400 block mb-1">Monthly ({cur})</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          disabled={!row.enabled}
+                          value={row.monthly}
+                          onChange={(e) => setRow({ monthly: parseFloat(e.target.value) || 0 })}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 disabled:opacity-40 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-slate-400 block mb-1">Yearly ({cur})</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          disabled={!row.enabled}
+                          value={row.yearly}
+                          onChange={(e) => setRow({ yearly: parseFloat(e.target.value) || 0 })}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 disabled:opacity-40 font-mono"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+                <p className="text-[11px] text-slate-500">
+                  Enter INR prices excluding GST. Workspaces only see plans that have a price in their billing currency.
+                </p>
               </div>
 
               {/* Quota Limits */}
@@ -638,6 +706,41 @@ export const PlansManagementPage: React.FC = () => {
                     placeholder="WhatsApp & Telegram Integrations&#10;Smart AI Agent Copilot&#10;Zero-PII Secure Architecture"
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
                   />
+                </div>
+              </div>
+
+              {/* Gated features (enforced by the server; the list above is display-only text) */}
+              <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                <div>
+                  <p className="text-xs font-semibold text-slate-300">Included features</p>
+                  <p className="text-[11px] text-slate-500">
+                    Workspaces on this plan can only use the ticked features. Unticked ones are locked behind an upgrade
+                    once plan enforcement is switched on.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {PLAN_FEATURE_DEFS.map(({ key, label, hint }) => (
+                    <label
+                      key={key}
+                      className="flex items-start space-x-2 bg-slate-950 border border-slate-800 p-2.5 rounded-lg cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 rounded border-slate-700 bg-slate-900 text-indigo-500"
+                        checked={formData.featureFlags[key]}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            featureFlags: { ...formData.featureFlags, [key]: e.target.checked },
+                          })
+                        }
+                      />
+                      <span className="text-xs text-slate-200">
+                        <span className="block font-semibold">{label}</span>
+                        <span className="block text-[10px] text-slate-500 leading-snug">{hint}</span>
+                      </span>
+                    </label>
+                  ))}
                 </div>
               </div>
 

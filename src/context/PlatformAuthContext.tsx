@@ -17,6 +17,9 @@ interface PlatformAuthContextType {
   isPlatformDev: boolean;
   isPlatformTester: boolean;
   isSupportAgent: boolean;
+  /** The accountant: read-only access to payments, invoice PDFs and the monthly GST package. */
+  isFinance: boolean;
+  canExportBilling: boolean;
   canManageStaff: boolean;
   canModifyTenantBilling: boolean;
   canViewTelemetry: boolean;
@@ -104,6 +107,8 @@ export const PlatformAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
   const isPlatformDev = user?.role === "platform_dev";
   const isPlatformTester = user?.role === "platform_tester";
   const isSupportAgent = user?.role === "support_agent";
+  const isFinance = user?.role === "finance";
+  const canExportBilling = isSuperAdmin || isFinance;
 
   const canManageStaff = isSuperAdmin;
   const canModifyTenantBilling = isSuperAdmin;
@@ -127,6 +132,8 @@ export const PlatformAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
         isPlatformDev,
         isPlatformTester,
         isSupportAgent,
+        isFinance,
+        canExportBilling,
         canManageStaff,
         canModifyTenantBilling,
         canViewTelemetry,

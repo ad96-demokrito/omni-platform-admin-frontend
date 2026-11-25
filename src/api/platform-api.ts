@@ -1,5 +1,6 @@
-import { platformRequest } from "./platform-client";
+import { platformDownload, platformRequest } from "./platform-client";
 import {
+  CreditNoteRecord,
   PlatformStaffUser,
   TenantMetadata,
   PlatformTenantOverview,
@@ -109,11 +110,23 @@ export const platformApi = {
         body: JSON.stringify(data),
       }),
 
+    /** Super admin: change a workspace's billing country/currency (also after it locked). */
+    setBillingCountry: (tenantId: string, data: { country: string; resetLock?: boolean }) =>
+      platformRequest<{ billingCountry: string; billingCurrency: string; currencyLocked: boolean }>(
+        `/platform/subscriptions/${tenantId}/billing`,
+        {
+          method: "PUT",
+          body: JSON.stringify(data),
+        }
+      ),
+
     quickRenew: (
       tenantId: string,
       data: {
         planId: string;
         amount: number;
+        /** Defaults to the workspace's billing currency. */
+        currency?: string;
         billingCycle?: string;
         paymentMethod?: string;
         sendReceipt?: boolean;
@@ -137,6 +150,8 @@ export const platformApi = {
       tenantId?: string;
       status?: string;
       search?: string;
+      /** "YYYY-MM" (India time): only invoices issued in that month. */
+      month?: string;
       page?: number;
       limit?: number;
     }) =>
@@ -146,10 +161,40 @@ export const platformApi = {
         page: number;
         limit: number;
         totalPages: number;
-        totalRevenue: number;
+        /** Paid revenue per currency (currencies are never summed together). */
+        revenueByCurrency: Record<string, number>;
       }>("/platform/payments", {
         params: params as any,
       }),
+
+    /** The monthly package for the accountant ("YYYY-MM", India time): a ZIP, or just the GST register as CSV. */
+    exportMonth: (month: string, format: "zip" | "csv" = "zip") =>
+      platformDownload(`/platform/payments/export?month=${encodeURIComponent(month)}&format=${format}`),
+
+    listCreditNotes: (params?: { month?: string; tenantId?: string }) =>
+      platformRequest<{ creditNotes: CreditNoteRecord[] }>("/platform/payments/credit-notes", { params: params as any }),
+
+    /** Credit (part of) an invoice. Leave `total` out to credit what is left. The refund itself is paid in the gateway. */
+    issueCreditNote: (
+      paymentId: string,
+      data: { kind: "refund" | "cancellation" | "correction"; reason: string; total?: number }
+    ) =>
+      platformRequest<{ creditNote: CreditNoteRecord }>(`/platform/payments/${paymentId}/credit-notes`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    downloadCreditNotePdf: (creditNoteId: string) => platformDownload(`/platform/payments/credit-notes/${creditNoteId}/pdf`),
+
+    /** The invoice as a PDF file. */
+    downloadInvoicePdf: (paymentId: string) => platformDownload(`/platform/payments/${paymentId}/invoice.pdf`),
+
+    /** Emails the invoice to the workspace owner again; the outcome says whether it was sent. */
+    resendInvoice: (paymentId: string) =>
+      platformRequest<{ outcome: "sent" | "failed" | "disabled" | "no_recipient" | "not_configured" | "not_found" }>(
+        `/platform/payments/${paymentId}/resend-invoice`,
+        { method: "POST", body: JSON.stringify({}) }
+      ),
 
     record: (data: {
       tenantId: string;

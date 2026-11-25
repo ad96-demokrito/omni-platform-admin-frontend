@@ -1,4 +1,4 @@
-export type PlatformRole = "super_admin" | "platform_dev" | "platform_tester" | "support_agent";
+export type PlatformRole = "super_admin" | "platform_dev" | "platform_tester" | "support_agent" | "finance";
 
 export interface PlatformStaffUser {
   id: string;
@@ -30,6 +30,9 @@ export interface TenantMetadata {
   maxContacts?: number;
   maxMonthlyAiQueries?: number;
   webhookSubscriptionCount?: number;
+  /** Currency this workspace is billed in, and the country that decided it. */
+  billingCurrency?: string;
+  billingCountry?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -135,18 +138,37 @@ export interface PlatformLogEntry {
 // ─────────────────────────────────────────────────────────────
 // Dynamic SaaS Plans & Entitlements
 // ─────────────────────────────────────────────────────────────
+/** One currency's price list for a plan. */
+export interface PlanPrice {
+  currency: string;
+  priceMonthly: number;
+  priceYearly: number;
+  isActive: boolean;
+}
+
+export interface PlanPriceInput {
+  currency: string;
+  priceMonthly: number;
+  priceYearly?: number;
+  isActive?: boolean;
+}
+
 export interface PlatformPlanItem {
   id: string;
   name: string;
   description: string | null;
+  /** Legacy single price (USD); the per-currency list in `prices` is authoritative. */
   priceMonthly: number;
   priceYearly: number;
   currency: string;
+  prices: PlanPrice[];
   maxChannels: number;
   maxContacts: number;
   maxMonthlyMessages: number;
   maxMonthlyAiQueries: number;
   features: string[];
+  /** Gated features the plan includes. `features` above is display-only text. */
+  featureFlags: PlanFeatureFlags;
   badgeText: string | null;
   isActive: boolean;
   isPublic: boolean;
@@ -155,18 +177,32 @@ export interface PlatformPlanItem {
   updatedAt: string;
 }
 
+/** Gated features a plan can include (plan/017 Phase 4); keys match the backend's PLAN_FEATURES. */
+export interface PlanFeatureFlags {
+  ai_copilot: boolean;
+  api_keys: boolean;
+  audit_compliance: boolean;
+  teams_roles: boolean;
+}
+
+export const PLAN_FEATURE_DEFS: ReadonlyArray<{ key: keyof PlanFeatureFlags; label: string; hint: string }> = [
+  { key: "ai_copilot", label: "AI Copilot & knowledge bases", hint: "Reply suggestions, summaries, RAG answers, AI Agent and Intent Router flow steps" },
+  { key: "api_keys", label: "Developer API keys", hint: "Creating keys, and every request made with a key" },
+  { key: "teams_roles", label: "Support teams & member roles", hint: "Teams and routing; inviting members with a role other than agent" },
+  { key: "audit_compliance", label: "Audit trail & data-privacy tools", hint: "Viewing the audit log and the GDPR export/erasure tools (events are always recorded)" },
+];
+
 export interface CreatePlatformPlanDto {
   id: string;
   name: string;
   description?: string;
-  priceMonthly: number;
-  priceYearly?: number;
-  currency?: string;
+  prices: PlanPriceInput[];
   maxChannels: number;
   maxContacts: number;
   maxMonthlyMessages: number;
   maxMonthlyAiQueries: number;
   features?: string[];
+  featureFlags?: PlanFeatureFlags;
   badgeText?: string;
   isActive?: boolean;
   isPublic?: boolean;
@@ -176,14 +212,14 @@ export interface CreatePlatformPlanDto {
 export interface UpdatePlatformPlanDto {
   name?: string;
   description?: string;
-  priceMonthly?: number;
-  priceYearly?: number;
-  currency?: string;
+  /** Replaces the plan's whole price list. */
+  prices?: PlanPriceInput[];
   maxChannels?: number;
   maxContacts?: number;
   maxMonthlyMessages?: number;
   maxMonthlyAiQueries?: number;
   features?: string[];
+  featureFlags?: PlanFeatureFlags;
   badgeText?: string;
   isActive?: boolean;
   isPublic?: boolean;
@@ -212,6 +248,11 @@ export interface WorkspaceSubscriptionItem {
   ownerName: string | null;
   lastPaymentAt: string | null;
   lastInvoiceNumber: string | null;
+  /** Currency this workspace is billed in (decides the plan price and gateway). */
+  billingCurrency: string;
+  billingCountry: string | null;
+  /** The workspace's auto-renewing subscription; null for a prepaid plan that simply ends on its date. */
+  renewal: { status: "active" | "past_due"; cancelAtPeriodEnd: boolean; gateway: string } | null;
   createdAt: string;
 }
 
@@ -236,7 +277,47 @@ export interface SubscriptionPaymentRecord {
   notes: string | null;
   recordedByStaffId: string | null;
   recordedByName: string | null;
+  /** Before tax. `amount` is the total charged (subtotal + taxAmount). */
+  subtotal: number;
+  taxAmount: number;
+  taxRate: number;
+  taxLabel: string | null;
+  buyerTaxId: string | null;
+  sellerTaxId: string | null;
+  /** The tax split (they add up to `taxAmount`). */
+  cgstAmount: number;
+  sgstAmount: number;
+  igstAmount: number;
+  /** null = a legacy invoice issued before GST tax invoices (no seller/buyer snapshot). */
+  supplyType: "b2b" | "b2c" | "export" | null;
+  placeOfSupply: string | null;
+  issuedAt: string | null;
+  /** True once the invoice PDF has been created and stored. */
+  hasPdf: boolean;
+  emailStatus: "none" | "pending" | "sent" | "failed";
+  emailedAt: string | null;
   createdAt: string;
+}
+
+/** A credit note: reduces an invoice (a refund, a correction, or the credit of an upgrade). */
+export interface CreditNoteRecord {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  creditNoteNumber: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  appliedToInvoiceNumber: string | null;
+  kind: "upgrade_credit" | "refund" | "cancellation" | "correction";
+  reason: string;
+  currency: string;
+  subtotal: number;
+  taxAmount: number;
+  total: number;
+  issuedBy: string;
+  issuedAt: string;
+  hasPdf: boolean;
+  emailStatus: "none" | "pending" | "sent" | "failed";
 }
 
 // ─────────────────────────────────────────────────────────────

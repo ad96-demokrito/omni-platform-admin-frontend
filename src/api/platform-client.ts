@@ -16,6 +16,25 @@ export class PlatformApiError extends Error {
   }
 }
 
+/** Downloads a file (for example an invoice PDF) from the platform API as a Blob. */
+export async function platformDownload(endpoint: string): Promise<Blob> {
+  const token = localStorage.getItem("platform_auth_token");
+  const response = await fetch(`${API_BASE}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    let message = `HTTP ${response.status}: ${response.statusText}`;
+    try {
+      const data = await response.json();
+      message = data?.error || data?.message || message;
+    } catch {
+      // not JSON: keep the status text
+    }
+    throw new PlatformApiError(response.status, message);
+  }
+  return response.blob();
+}
+
 /**
  * Universal fetch wrapper for Omni Platform Admin Portal.
  * Enforces API_BASE = '/api' prefix. Endpoints passed to this client

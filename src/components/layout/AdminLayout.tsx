@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 export const AdminLayout: React.FC = () => {
-  const { user, logout, isSuperAdmin, isPlatformDev, isPlatformTester, isSupportAgent, canViewLogs } = usePlatformAuth();
+  const { user, logout, isSuperAdmin, isPlatformDev, isPlatformTester, isSupportAgent, isFinance, canViewLogs } = usePlatformAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -49,6 +49,11 @@ export const AdminLayout: React.FC = () => {
         return {
           label: "Support Agent",
           bg: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+        };
+      case "finance":
+        return {
+          label: "Finance (read-only)",
+          bg: "bg-teal-500/10 text-teal-400 border-teal-500/30",
         };
       default:
         return {
@@ -87,7 +92,7 @@ export const AdminLayout: React.FC = () => {
       name: "Payments & Invoices",
       path: "/payments",
       icon: Receipt,
-      visible: isSuperAdmin || isSupportAgent,
+      visible: isSuperAdmin || isSupportAgent || isFinance,
       badge: "Ledger",
     },
     {

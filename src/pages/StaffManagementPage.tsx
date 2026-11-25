@@ -113,6 +113,8 @@ export const StaffManagementPage: React.FC = () => {
         return "bg-amber-500/10 text-amber-400 border-amber-500/30";
       case "support_agent":
         return "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
+      case "finance":
+        return "bg-teal-500/10 text-teal-400 border-teal-500/30";
       default:
         return "bg-slate-500/10 text-slate-400 border-slate-500/30";
     }
@@ -347,6 +349,7 @@ export const StaffManagementPage: React.FC = () => {
                   <option value="support_agent">Support Agent (Read-only metadata)</option>
                   <option value="platform_tester">Platform QA / Tester (Synthetic test runner)</option>
                   <option value="platform_dev">Platform Dev (Live Telemetry & Logs)</option>
+                  <option value="finance">Finance / Accountant (Payments, invoices and GST export, read-only)</option>
                   <option value="super_admin">Super Admin (Full Governance Authority)</option>
                 </select>
               </div>
@@ -412,6 +415,7 @@ export const StaffManagementPage: React.FC = () => {
                   <option value="support_agent">Support Agent</option>
                   <option value="platform_tester">Platform QA / Tester</option>
                   <option value="platform_dev">Platform Dev</option>
+                  <option value="finance">Finance / Accountant</option>
                   <option value="super_admin">Super Admin</option>
                 </select>
               </div>

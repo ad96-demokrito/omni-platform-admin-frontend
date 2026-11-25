@@ -36,6 +36,8 @@ const RootRedirect: React.FC = () => {
       return <Navigate to="/telemetry" replace />;
     case "platform_tester":
       return <Navigate to="/testing" replace />;
+    case "finance":
+      return <Navigate to="/payments" replace />;
     case "super_admin":
     case "support_agent":
     default:
@@ -90,7 +92,7 @@ export const App: React.FC = () => {
               <Route
                 path="/payments"
                 element={
-                  <ProtectedRoute allowedRoles={["super_admin", "support_agent"]}>
+                  <ProtectedRoute allowedRoles={["super_admin", "support_agent", "finance"]}>
                     <SubscriptionPaymentsPage />
                   </ProtectedRoute>
                 }

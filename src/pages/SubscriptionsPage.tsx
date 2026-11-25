@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { platformApi } from "../api/platform-api";
+import { formatMoney, priceFor } from "../utils/money";
 import {
   WorkspaceSubscriptionItem,
   PlatformPlanItem,
@@ -45,7 +46,7 @@ export const SubscriptionsPage: React.FC = () => {
   // Quick Renew Modal State
   const [renewingSub, setRenewingSub] = useState<WorkspaceSubscriptionItem | null>(null);
   const [renewPlanId, setRenewPlanId] = useState("");
-  const [renewAmount, setRenewAmount] = useState(49);
+  const [renewAmount, setRenewAmount] = useState(0);
   const [renewCycle, setRenewCycle] = useState("monthly");
   const [renewMethod, setRenewMethod] = useState("stripe");
   const [renewSendReceipt, setRenewSendReceipt] = useState(true);
@@ -112,7 +113,8 @@ export const SubscriptionsPage: React.FC = () => {
     setRenewingSub(sub);
     setRenewPlanId(sub.planId || (plans[0]?.id ?? "starter"));
     const matchingPlan = plans.find((p) => p.id === sub.planId);
-    setRenewAmount(matchingPlan ? matchingPlan.priceMonthly : 49);
+    const price = matchingPlan ? priceFor(matchingPlan, sub.billingCurrency) : null;
+    setRenewAmount(price ? price.monthly : 0);
     setRenewCycle("monthly");
     setRenewMethod("stripe");
     setRenewSendReceipt(true);
@@ -123,8 +125,9 @@ export const SubscriptionsPage: React.FC = () => {
   const handlePlanChangeInRenew = (newPlanId: string) => {
     setRenewPlanId(newPlanId);
     const plan = plans.find((p) => p.id === newPlanId);
-    if (plan) {
-      setRenewAmount(renewCycle === "yearly" ? plan.priceYearly : plan.priceMonthly);
+    const price = plan && renewingSub ? priceFor(plan, renewingSub.billingCurrency) : null;
+    if (price) {
+      setRenewAmount(renewCycle === "yearly" ? price.yearly : price.monthly);
     }
   };
 
@@ -138,6 +141,7 @@ export const SubscriptionsPage: React.FC = () => {
       await platformApi.subscriptions.quickRenew(renewingSub.tenantId, {
         planId: renewPlanId,
         amount: Number(renewAmount),
+        currency: renewingSub.billingCurrency,
         billingCycle: renewCycle,
         paymentMethod: renewMethod,
         sendReceipt: renewSendReceipt,
@@ -153,7 +157,34 @@ export const SubscriptionsPage: React.FC = () => {
     }
   };
 
+  // Billing country override (super admin): changes the workspace's currency, also after it locked.
+  const [billingCountryInput, setBillingCountryInput] = useState("");
+  const [billingResetLock, setBillingResetLock] = useState(false);
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [billingMessage, setBillingMessage] = useState<string | null>(null);
+
+  const handleBillingCountrySave = async () => {
+    if (!editingSub) return;
+    setBillingBusy(true);
+    setBillingMessage(null);
+    try {
+      const res = await platformApi.subscriptions.setBillingCountry(editingSub.tenantId, {
+        country: billingCountryInput.trim().toUpperCase(),
+        resetLock: billingResetLock,
+      });
+      setBillingMessage(`Saved: ${res.billingCountry} (${res.billingCurrency})${res.currencyLocked ? ", currency locked" : ""}`);
+      fetchSubscriptions();
+    } catch (err: any) {
+      setBillingMessage(err.message || "Failed to update billing country");
+    } finally {
+      setBillingBusy(false);
+    }
+  };
+
   const openLifecycleModal = (sub: WorkspaceSubscriptionItem) => {
+    setBillingCountryInput(sub.billingCountry ?? "");
+    setBillingResetLock(false);
+    setBillingMessage(null);
     setEditingSub(sub);
     setEditPlanId(sub.planId || "starter");
     setEditStatus(sub.planStatus || "active");
@@ -354,6 +385,28 @@ export const SubscriptionsPage: React.FC = () => {
                       <span className="text-[10px] font-mono text-slate-400 uppercase">
                         {sub.planId}
                       </span>
+                      <div className="mt-1">
+                        {sub.renewal ? (
+                          <span
+                            className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
+                              sub.renewal.status === "past_due"
+                                ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                                : sub.renewal.cancelAtPeriodEnd
+                                ? "bg-slate-700/40 text-slate-300 border-slate-600"
+                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                            }`}
+                            title={`Auto-renewing via ${sub.renewal.gateway}`}
+                          >
+                            {sub.renewal.status === "past_due"
+                              ? "RENEWAL FAILED"
+                              : sub.renewal.cancelAtPeriodEnd
+                              ? "RENEWAL CANCELLED"
+                              : "AUTO-RENEWS"}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-mono text-slate-500">PREPAID</span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Status & Expiration */}
@@ -523,7 +576,14 @@ export const SubscriptionsPage: React.FC = () => {
                 >
                   {plans.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.currency} {p.priceMonthly}/mo | {p.currency} {p.priceYearly}/yr)
+                      {p.name} (
+                      {(() => {
+                        const price = priceFor(p, renewingSub.billingCurrency);
+                        return price
+                          ? `${formatMoney(price.monthly, renewingSub.billingCurrency)}/mo | ${formatMoney(price.yearly, renewingSub.billingCurrency)}/yr`
+                          : `no ${renewingSub.billingCurrency} price`;
+                      })()}
+                      )
                     </option>
                   ))}
                 </select>
@@ -538,8 +598,9 @@ export const SubscriptionsPage: React.FC = () => {
                     onChange={(e) => {
                       setRenewCycle(e.target.value);
                       const p = plans.find((x) => x.id === renewPlanId);
-                      if (p) {
-                        setRenewAmount(e.target.value === "yearly" ? p.priceYearly : p.priceMonthly);
+                      const price = p ? priceFor(p, renewingSub.billingCurrency) : null;
+                      if (price) {
+                        setRenewAmount(e.target.value === "yearly" ? price.yearly : price.monthly);
                       }
                     }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
@@ -551,7 +612,7 @@ export const SubscriptionsPage: React.FC = () => {
 
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1">
-                    Amount Paid ($) <span className="text-rose-400">*</span>
+                    Amount Paid ({renewingSub.billingCurrency}) <span className="text-rose-400">*</span>
                   </label>
                   <input
                     type="number"
@@ -661,6 +722,47 @@ export const SubscriptionsPage: React.FC = () => {
                 <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-xs flex items-center space-x-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{lifecycleError}</span>
+                </div>
+              )}
+
+              {isSuperAdmin && (
+                <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-300">Billing country</span>
+                    <span className="text-[11px] font-mono text-slate-400">
+                      Now: {editingSub.billingCountry ?? "—"} · {editingSub.billingCurrency}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      maxLength={2}
+                      value={billingCountryInput}
+                      onChange={(e) => setBillingCountryInput(e.target.value.toUpperCase())}
+                      placeholder="IN"
+                      className="w-20 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono uppercase focus:outline-none focus:border-indigo-500"
+                    />
+                    <label className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                      <input
+                        type="checkbox"
+                        checked={billingResetLock}
+                        onChange={(e) => setBillingResetLock(e.target.checked)}
+                      />
+                      Unlock currency for the customer
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleBillingCountrySave}
+                      disabled={billingBusy || billingCountryInput.length !== 2}
+                      className="ml-auto text-xs font-medium px-3 py-2 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700 disabled:opacity-50"
+                    >
+                      {billingBusy ? "Saving…" : "Save country"}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    India (IN) is billed in INR; every other country in USD. Changing it applies to the next checkout.
+                  </p>
+                  {billingMessage && <p className="text-[11px] text-indigo-300">{billingMessage}</p>}
                 </div>
               )}
 
